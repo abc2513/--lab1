@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Hello OpenCV.js</title>
+    <style>
+        .root {}
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .container>div {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="root">
+        <h2>Hello OpenCV</h2>
+        <p id="status">OpenCV.js is loading...</p>
+        <div class="container">
+            <div class="inputoutput">
+                <div>
+                    可选择本地图片文件：<input type="file" id="fileInput" name="file" />
+                </div>
+                <div>
+
+                </div>
+                <div class="caption">原图片 </div>
+                <img id="imageSrc" alt="No Image" src="./image_1.png" />
+            </div>
+            <div class="inputoutput">
+                <div class="caption">修改颜色空间</div>
+                <canvas id="canvasOutput0"></canvas>
+            </div>
+            <div class="inputoutput">
+                <div class="caption">降质处理结果（下采样，噪声，模糊，几何变换）</div>
+                <canvas id="canvasOutput"></canvas>
+            </div>
+            <div>
+                <div class="caption">去噪处理结果（均值，中值去噪）</div>
+                <canvas id="canvasOutput2"></canvas>
+            </div>
+            <div>
+                <div class="caption">插值处理结果（最近）</div>
+                <canvas id="canvasOutput3"></canvas>
+            </div>
+            <div>
+                <div class="caption">插值处理结果（线性）</div>
+                <canvas id="canvasOutput4"></canvas>
+            </div>
+            <div>
+                <div class="caption">插值处理结果（三次）</div>
+                <canvas id="canvasOutput5"></canvas>
+            </div>
+
+
+        </div>
+    </div>
+    <script async src="./opencv.js" type="text/javascript"></script>
+    <script type="text/javascript">
+
+        // 1.能够使用OPENCV等工具；
+        // 2.能够读取图像数据，并能调用OPENCV库函数来进行颜色空间变换和降质变换（几何变化、模糊、下采样和加噪等），并可视化显示相关结果；
+        // 3.能够读取图像数据，并能调用OPENCV库函数来进行加噪声，然后对噪声图像进行均值、中值去噪，并可视化显示相关结果；
+        // 4.简单插值算法（包括最近邻、双线性、双三次等）实现；
+        // 5.基于2D自回归模型的图像插值算法实现。
+        // 参考文献：Zhang, X. and Wu, X., 2008. Image interpolation by adaptive 2-D autoregressive modeling and soft-decision estimation. IEEE transactions on Image Processing, 17(6), pp.887-896. 
+        //================================================================================================
+        //opencv.js官方文档：https://docs.opencv.org/4.5.5/d5/d10/tutorial_js_root.html
+        //opencv的一个教程：https://www.w3schools.cn/opencv_python/opencv_python_resize_rotate_image.html
+        //opencv.js: https://cvdoc.netlify.app
+        //================================================================================================
+
+        // 添加椒盐噪声
+        function addSaltPepperNoise(src, dst, rate) {
+            console.log(src);
+            src.copyTo(dst);
+            let height = dst.size().height;
+            let width = dst.size().width;
+            let noiseCount = rate * height * width / 2;
+
+            // 添加椒盐噪声
+            for (let i = 0; i < noiseCount; i++) {
+                let x = Math.floor(Math.random() * width);
+                let y = Math.floor(Math.random() * height);
+                if (Math.random() > 0.5) {
+                    dst.ucharPtr(y, x)[0] = 0;
+                    dst.ucharPtr(y, x)[1] = 0;
+                    dst.ucharPtr(y, x)[2] = 0;
+                } else {
+                    dst.ucharPtr(y, x)[0] = 255;
+                    dst.ucharPtr(y, x)[1] = 255;
+                    dst.ucharPtr(y, x)[2] = 255;
+                }
+            }
+
+        }
+        //降质变换函数
+        function changeQuality(src, dst) {
+            src.copyTo(dst);
+            //高斯模糊：
+            cv.GaussianBlur(dst, dst, { width: 5, height: 5 }, 0, 0, cv.BORDER_DEFAULT);
+            //下采样：
+            cv.resize(dst, dst, { width: dst.cols * 2 / 3, height: dst.rows * 2 / 3 }, 0, 0, cv.INTER_AREA);
+            //加噪声：
+            addSaltPepperNoise(dst, dst, 0.1);
+            //几何变换，旋转5度
+            let center = new cv.Point(dst.cols / 2, dst.rows / 2);
+            let M = cv.getRotationMatrix2D(center, 5, 1);
+            cv.warpAffine(dst, dst, M, { width: dst.cols, height: dst.rows });
+
+
+            //颜色空间变换：
+            // cv.cvtColor(dst, dst, cv.COLOR_RGBA2GRAY);
+        }
+        //去噪声函数
+        function removeNoise(src, dst) {
+            //均值滤波：
+            cv.blur(src, dst, { width: 3, height: 3 }, { x: -1, y: -1 }, cv.BORDER_DEFAULT);
+            //中值滤波：
+            cv.medianBlur(src, dst, 3);
+        }
+
+        //插值算法
+        function interpolation(src, dst, method, scale = 3 / 2) {
+            //最近邻插值：
+            if (method == "nearest") {
+                cv.resize(src, dst, { width: src.cols * scale, height: src.rows * scale }, 0, 0, cv.INTER_NEAREST);
+            }
+            //双线性插值：
+            else if (method == "linear") {
+                cv.resize(src, dst, { width: src.cols * scale, height: src.rows * scale }, 0, 0, cv.INTER_LINEAR);
+            }
+            //双三次插值：
+            else if (method == "cubic") {
+                cv.resize(src, dst, { width: src.cols * scale, height: src.rows * scale }, 0, 0, cv.INTER_CUBIC);
+            }
+        }
+
+        //主处理函数
+        function mainHandler() {
+
+            let mat = cv.imread(imgElement);
+            console.log(mat);
+            let dst = new cv.Mat();
+
+            // 修改颜色空间
+            let dst0 = new cv.Mat();
+            cv.cvtColor(mat, dst0, cv.COLOR_RGBA2GRAY);
+            cv.imshow('canvasOutput0', dst0);
+
+
+
+            //调用降质变换函数：
+            changeQuality(mat, dst);
+            cv.imshow('canvasOutput', dst);
+
+            //去噪声处理：
+            let dst2 = new cv.Mat();
+            removeNoise(dst, dst2);
+            cv.imshow('canvasOutput2', dst2);
+
+            //插值处理：
+            let dst3 = new cv.Mat();
+            interpolation(dst2, dst3, "nearest");
+            cv.imshow('canvasOutput3', dst3);
+
+            let dst4 = new cv.Mat();
+            interpolation(dst2, dst4, "linear");
+            cv.imshow('canvasOutput4', dst4);
+
+            let dst5 = new cv.Mat();
+            interpolation(dst2, dst5, "cubic");
+            cv.imshow('canvasOutput5', dst5);
+
+            //释放内存
+            mat.delete();
+            dst.delete();
+            dst.delete();
+            dst2.delete();
+            dst3.delete();
+            dst4.delete();
+            dst5.delete();
+
+        }
+
+        //以下代码为页面初始化代码
+
+        let imgElement = document.getElementById('imageSrc');
+        let inputElement = document.getElementById('fileInput');
+        inputElement.addEventListener('change', (e) => {
+            imgElement.src = URL.createObjectURL(e.target.files[0]);
+        }, false);
+
+        imgElement.onload = function () {
+            if (cv)
+                mainHandler();
+        };
+        var Module = {
+            // https://emscripten.org/docs/api_reference/module.html#Module.onRuntimeInitialized
+            //有点坑，必须写这个加载完成后的钩子，不然会报错
+            onRuntimeInitialized() {
+                document.getElementById('status').innerHTML = 'OpenCV.js is ready.';
+                mainHandler();
+            }
+        };
+    </script>
+</body>
+
+</html>
